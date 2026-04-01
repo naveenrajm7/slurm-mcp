@@ -21,8 +21,8 @@ from typing import Optional
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
+from slurm_mcp_server.auth import get_slurm_client
 from slurm_mcp_server.config import config
-from slurm_mcp_server.slurm_client import SlurmRestClient
 from slurm_mcp_server.utils import (
     normalise_job,
     normalise_node,
@@ -31,7 +31,6 @@ from slurm_mcp_server.utils import (
 )
 
 mcp = FastMCP(name="slurm-mcp-server")
-slurm = SlurmRestClient(config)
 
 
 # ---------------------------------------------------------------------------
@@ -85,11 +84,12 @@ async def slurm_list_jobs(
 ) -> list[dict]:
     """List jobs on the cluster with optional client-side filtering."""
     try:
+        username, slurm = get_slurm_client()
         data = await slurm.get("jobs")
         jobs: list[dict] = data.get("jobs", [])
 
-        # Client-side filters
-        effective_user = config.username if mine else user
+        # Client-side filters — 'mine' uses the authenticated user's username
+        effective_user = username if mine else user
         if effective_user:
             jobs = [j for j in jobs if j.get("user_name") == effective_user]
         if states:
@@ -143,6 +143,7 @@ async def slurm_get_job(
 ) -> dict:
     """Get detailed information about a single job."""
     try:
+        _, slurm = get_slurm_client()
         data = await slurm.get(f"job/{job_id}")
         jobs: list[dict] = data.get("jobs", [])
         if not jobs:
@@ -207,6 +208,7 @@ async def slurm_list_nodes(
 ) -> list[dict]:
     """List nodes with optional client-side filtering."""
     try:
+        _, slurm = get_slurm_client()
         data = await slurm.get("nodes")
         nodes: list[dict] = data.get("nodes", [])
 
@@ -248,6 +250,7 @@ async def slurm_get_node(
 ) -> dict:
     """Get detailed information about a single node."""
     try:
+        _, slurm = get_slurm_client()
         data = await slurm.get(f"node/{node_name}")
         nodes: list[dict] = data.get("nodes", [])
         if not nodes:
@@ -299,6 +302,7 @@ async def slurm_list_partitions(
 ) -> list[dict]:
     """List all Slurm partitions."""
     try:
+        _, slurm = get_slurm_client()
         data = await slurm.get("partitions")
         partitions: list[dict] = data.get("partitions", [])
 
@@ -345,6 +349,7 @@ async def slurm_list_reservations(
 ) -> list[dict]:
     """List all Slurm reservations."""
     try:
+        _, slurm = get_slurm_client()
         data = await slurm.get("reservations")
         reservations: list[dict] = data.get("reservations", [])
         return [normalise_reservation(r, fields) for r in reservations]
@@ -358,8 +363,9 @@ async def slurm_list_reservations(
 
 def main() -> None:
     port = int(os.environ.get("MCP_PORT", "0"))
+    transport = os.environ.get("MCP_TRANSPORT", "sse")
     if port:
-        mcp.run(transport="sse", port=port, show_banner=False)
+        mcp.run(transport=transport, port=port, show_banner=False)
     else:
         mcp.run(transport="stdio", show_banner=False)
 

@@ -5,6 +5,9 @@ Slurm REST Client
 Thin async HTTP client for the Slurm REST API.  All tools in server.py call
 through this client so auth, base URL construction, and error handling live in
 one place.
+
+Each instance is scoped to one user's JWT — instantiated per-request via
+auth.get_slurm_client().
 """
 
 from typing import Any
@@ -18,23 +21,23 @@ class SlurmRestClient:
     """
     Async HTTP client for the Slurm REST API.
 
-    Usage:
-        client = SlurmRestClient(config)
-        jobs = await client.get("jobs")
-        job  = await client.get(f"job/{job_id}")
+    Accepts a per-request username and JWT token rather than reading from
+    the shared config, so each user's requests are authenticated with their
+    own credentials and subject to Slurm's per-user access controls.
+
+    Usage (in a tool):
+        username, slurm = get_slurm_client()
+        jobs = await slurm.get("jobs")
     """
 
-    def __init__(self, config: SlurmConfig) -> None:
-        headers: dict[str, str] = {}
-        if config.jwt_token:
-            headers["X-SLURM-USER-TOKEN"] = config.jwt_token
-        if config.username:
-            headers["X-SLURM-USER-NAME"] = config.username
-
+    def __init__(self, base_url: str, config: SlurmConfig, username: str, token: str) -> None:
         self._version = config.api_version
         self._http = httpx.AsyncClient(
-            base_url=config.base_url,
-            headers=headers,
+            base_url=base_url,
+            headers={
+                "X-SLURM-USER-NAME": username,
+                "X-SLURM-USER-TOKEN": token,
+            },
             timeout=config.timeout,
         )
 
