@@ -364,8 +364,9 @@ async def slurm_list_reservations(
 def main() -> None:
     port = int(os.environ.get("MCP_PORT", "0"))
     transport = os.environ.get("MCP_TRANSPORT", "sse")
+    host = os.environ.get("MCP_HOST", "127.0.0.1")
     if port:
-        mcp.run(transport=transport, port=port, show_banner=False)
+        mcp.run(transport=transport, host=host, port=port, show_banner=False)
     else:
         mcp.run(transport="stdio", show_banner=False)
 
