@@ -12,6 +12,8 @@ Environment variables:
                         Used as a fallback when no Authorization header is present (stdio mode).
     SLURM_API_VERSION:  API version string (default: v0.0.42)
     SLURM_TIMEOUT:      Request timeout in seconds (default: 30)
+    SLURM_VERIFY_SSL:   Verify SSL certificates when calling Slurm REST API (default: true).
+                        Set to false to disable — use only when the CA chain is not trusted.
 """
 
 from pydantic import Field
@@ -25,6 +27,7 @@ class SlurmConfig(BaseSettings):
     jwt_token: str = Field(default="")    # user JWT — stdio fallback when no Authorization header
     api_version: str = Field(default="v0.0.42")
     timeout: int = Field(default=30)
+    verify_ssl: bool = Field(default=True)
 
     model_config = {
         "env_prefix": "SLURM_",

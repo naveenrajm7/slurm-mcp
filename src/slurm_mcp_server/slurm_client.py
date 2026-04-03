@@ -39,6 +39,7 @@ class SlurmRestClient:
                 "X-SLURM-USER-TOKEN": token,
             },
             timeout=config.timeout,
+            verify=config.verify_ssl,
         )
 
     def _url(self, resource: str) -> str:
