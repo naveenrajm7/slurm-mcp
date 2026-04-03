@@ -22,10 +22,25 @@ import base64
 import json
 
 from fastmcp.exceptions import ToolError
+from fastmcp.server.auth import AccessToken, TokenVerifier
 from fastmcp.server.dependencies import get_http_headers
 
 from slurm_mcp_server.config import config
 from slurm_mcp_server.slurm_client import SlurmRestClient
+
+
+class SlurmBearerAuthProvider(TokenVerifier):
+    """
+    Accepts any non-empty Bearer token as a Slurm JWT.
+
+    Slurm validates the JWT itself — we just need FastMCP to process the
+    Authorization header so it is available via get_http_headers() in tools.
+    """
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if not token:
+            return None
+        return AccessToken(token=token, client_id=token, scopes=[], expires_at=None)
 
 
 def _username_from_token(token: str) -> str:

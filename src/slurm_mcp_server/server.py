@@ -21,7 +21,7 @@ from typing import Optional
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
-from slurm_mcp_server.auth import get_slurm_client
+from slurm_mcp_server.auth import SlurmBearerAuthProvider, get_slurm_client
 from slurm_mcp_server.config import config
 from slurm_mcp_server.utils import (
     normalise_job,
@@ -30,7 +30,7 @@ from slurm_mcp_server.utils import (
     normalise_reservation,
 )
 
-mcp = FastMCP(name="slurm-mcp-server")
+mcp = FastMCP(name="slurm-mcp-server", auth=SlurmBearerAuthProvider())
 
 
 # ---------------------------------------------------------------------------
