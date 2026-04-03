@@ -23,7 +23,7 @@ import json
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.auth import AccessToken, TokenVerifier
-from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.dependencies import get_access_token, get_http_headers
 
 from slurm_mcp_server.config import config
 from slurm_mcp_server.slurm_client import SlurmRestClient
@@ -73,9 +73,11 @@ def get_slurm_client() -> tuple[str, SlurmRestClient]:
             "or pass X-Slurm-URL in the request header."
         )
 
-    auth_header = headers.get("authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
+    # Prefer the token from the FastMCP auth context (set by SlurmBearerAuthProvider),
+    # fall back to env var for stdio/dev mode.
+    access_token = get_access_token()
+    if access_token and access_token.token:
+        token = access_token.token
     elif config.jwt_token:
         token = config.jwt_token
     else:
