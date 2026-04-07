@@ -83,7 +83,7 @@ claude mcp add --transport sse slurm http://slurm-mcp.your-cluster/sse
 > Which jobs are pending in the gpu partition?
 > What are the resource details for job 12345?
 > List all idle GPU nodes
-> Which nodes have AMD GPUs?
+> Which nodes have GPUs?
 > Are there any maintenance reservations this week?
 > What partitions are available and what are their time limits?
 > Show me all my jobs
@@ -121,7 +121,7 @@ slurm_list_jobs(states=["RUNNING"], fields=["job_id", "name", "nodes", "tres_all
 ### Example `.env` file
 
 ```env
-SLURM_BASE_URL=http://ctr-alola-ctrl-01.example.com:6820
+SLURM_BASE_URL=http://your-slurm-host:6820
 SLURM_JWT_TOKEN=eyJhbGci...
 SLURM_API_VERSION=v0.0.42
 SLURM_TIMEOUT=30

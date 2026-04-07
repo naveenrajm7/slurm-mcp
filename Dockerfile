@@ -22,7 +22,7 @@ FROM python:3.14-alpine3.23
 
 LABEL org.opencontainers.image.title="Slurm MCP Server" \
       org.opencontainers.image.description="MCP server for the Slurm workload manager" \
-      org.opencontainers.image.source="https://github.com/naveenrajm7/cluster-mcp-servers"
+      org.opencontainers.image.source="https://github.com/your-org/cluster-mcp-servers"
 
 ENV PYTHONUNBUFFERED=1
 

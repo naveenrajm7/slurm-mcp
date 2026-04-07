@@ -66,7 +66,7 @@ mcp = FastMCP(name="slurm-mcp-server", auth=SlurmBearerAuthProvider())
 
     Two-step pattern for cross-resource queries:
       # Find all RUNNING jobs on nodes with gfx1151 GPUs:
-      nodes = slurm_list_nodes(gres_filter="gres:gpu:amd:1")
+      nodes = slurm_list_nodes(gres_filter="gpu:nvidia:1")
       node_names = [n["name"] for n in nodes]
       jobs = slurm_list_jobs(states=["RUNNING"], node=node_names[0])
 
@@ -180,9 +180,9 @@ async def slurm_get_job(
     - gres_filter: Return only nodes whose gres field contains this string.
                    Use this to find nodes with specific GPU types:
                    - "gpu"               → any GPU node
-                   - "gpu:amd"           → any AMD GPU node
-                   - "gpu:amd:4"         → nodes with exactly 4 AMD GPUs
-                   Example: gres_filter="gpu:amd"
+                   - "gpu:nvidia"        → any NVIDIA GPU node
+                   - "gpu:nvidia:4"      → nodes with exactly 4 NVIDIA GPUs
+                   Example: gres_filter="gpu:nvidia"
 
     Field projection:
     - fields: List of field names to return per node.
@@ -240,7 +240,7 @@ async def slurm_list_nodes(
     Returns a single node object with all available fields.
 
     Examples:
-        slurm_get_node("ctr-halo-b48-01")
+        slurm_get_node("node-01")
         slurm_get_node("gpu-01", fields=["name", "state", "gres", "gres_used", "free_memory"])
     """
 )
