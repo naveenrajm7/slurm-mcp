@@ -161,6 +161,80 @@ def normalise_job(raw: dict, fields: list[str] | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# SlurmDB job normalisation
+# ---------------------------------------------------------------------------
+
+# SlurmDB job records are richer than scheduler records — they include
+# accounting data (elapsed, CPUs, tres) and are available for completed jobs.
+DB_JOB_SUMMARY_FIELDS = [
+    "job_id",
+    "name",
+    "user",
+    "group",
+    "account",
+    "state",
+    "partition",
+    "nodes",
+    "node_count",
+    "cpus",
+    "submit",
+    "start",
+    "end",
+    "elapsed",
+    "time_limit",
+    "exit_code",
+    "work_dir",
+    "tres_req_str",
+    "tres_alloc_str",
+    "qos",
+    "priority",
+    "reservation",
+    "cluster",
+    "comment",
+    "constraints",
+    "script",
+    "environment",
+]
+
+
+def normalise_db_job(raw: dict, fields: list[str] | None = None) -> dict:
+    """
+    Flatten a raw SlurmDB job object into a clean dict.
+
+    SlurmDB returns a slightly different shape than the scheduler API:
+    timestamps are plain ints, state is a dict with a 'current' list.
+    """
+    out: dict[str, Any] = {}
+    for key, val in raw.items():
+        if isinstance(val, dict) and set(val.keys()) <= {"set", "number", "infinite"}:
+            out[key] = _unwrap(val)
+        else:
+            out[key] = val
+
+    # State comes as {"current": ["COMPLETED"], "reason": "None"}
+    if "state" in out and isinstance(out["state"], dict):
+        current = out["state"].get("current", [])
+        out["state"] = current[0] if len(current) == 1 else current
+
+    # Timestamps
+    for ts_field in ("submit", "start", "end", "eligible", "accrue"):
+        if ts_field in out:
+            out[ts_field] = _fmt_ts(out[ts_field])
+
+    # elapsed is already seconds — convert to HH:MM:SS
+    if "elapsed" in out:
+        out["elapsed"] = _fmt_duration(out["elapsed"])
+
+    # exit_code: {"return_code": {"set": true, "number": 0}, "signal": {...}}
+    if "exit_code" in out and isinstance(out["exit_code"], dict):
+        rc = out["exit_code"].get("return_code")
+        out["exit_code"] = _unwrap(rc)
+
+    effective_fields = fields if fields is not None else DB_JOB_SUMMARY_FIELDS
+    return project(out, effective_fields)
+
+
+# ---------------------------------------------------------------------------
 # Node normalisation
 # ---------------------------------------------------------------------------
 

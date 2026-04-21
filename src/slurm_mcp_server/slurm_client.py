@@ -47,6 +47,11 @@ class SlurmRestClient:
         resource = resource.strip("/")
         return f"/slurm/{self._version}/{resource}/"
 
+    def _db_url(self, resource: str) -> str:
+        """Build versioned SlurmDB REST URL: /slurmdb/<version>/<resource>/"""
+        resource = resource.strip("/")
+        return f"/slurmdb/{self._version}/{resource}/"
+
     async def get(
         self,
         resource: str,
@@ -67,7 +72,34 @@ class SlurmRestClient:
         """
         url = self._url(resource)
         response = await self._http.get(url, params=params)
-        response.raise_for_status()
+        if response.is_error:
+            raise httpx.HTTPStatusError(
+                f"HTTP {response.status_code} from {url}: {response.text}",
+                request=response.request,
+                response=response,
+            )
+        return response.json()
+
+    async def get_db(
+        self,
+        resource: str,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        GET a SlurmDB resource and return the parsed JSON body.
+
+        Args:
+            resource: Resource path without version prefix (e.g. "jobs").
+            params:   Optional query parameters forwarded to the API.
+        """
+        url = self._db_url(resource)
+        response = await self._http.get(url, params=params)
+        if response.is_error:
+            raise httpx.HTTPStatusError(
+                f"HTTP {response.status_code} from {url}: {response.text}",
+                request=response.request,
+                response=response,
+            )
         return response.json()
 
     async def aclose(self) -> None:

@@ -24,6 +24,7 @@ from fastmcp.exceptions import ToolError
 from slurm_mcp_server.auth import SlurmBearerAuthProvider, get_slurm_client
 from slurm_mcp_server.config import config
 from slurm_mcp_server.utils import (
+    normalise_db_job,
     normalise_job,
     normalise_node,
     normalise_partition,
@@ -110,7 +111,7 @@ async def slurm_list_jobs(
         return [normalise_job(j, fields) for j in jobs]
 
     except Exception as e:
-        raise ToolError(f"Failed to list jobs: {e}") from e
+        raise ToolError(f"Failed to list jobs: {e!r}") from e
 
 
 @mcp.tool(
@@ -154,7 +155,164 @@ async def slurm_get_job(
     except ToolError:
         raise
     except Exception as e:
-        raise ToolError(f"Failed to get job {job_id}: {e}") from e
+        raise ToolError(f"Failed to get job {job_id}: {e!r}") from e
+
+
+# ---------------------------------------------------------------------------
+# SlurmDB jobs (accounting history)
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    description="""
+    Query SlurmDB for historical job records (completed, failed, cancelled, etc.).
+
+    Unlike slurm_list_jobs / slurm_get_job — which query the live scheduler and
+    only see jobs currently in the queue — this tool queries the Slurm accounting
+    database (slurmdbd) and returns jobs from any point in history.
+
+    Returns a list of job objects.  By default each object contains:
+    job_id, name, user, group, account, state, partition, nodes, node_count,
+    cpus, submit, start, end, elapsed, time_limit, exit_code, work_dir,
+    tres_req_str, tres_alloc_str, qos, priority, reservation, cluster, comment,
+    constraints.  Pass fields=["script"] or fields=["environment"] to include
+    those large fields only when needed.
+
+    All filtering parameters are forwarded server-side to slurmdbd (CSV strings
+    where noted); client-side limit is applied after.
+
+    Args:
+        users:       CSV user list (e.g. "alice,bob").
+        job_name:    CSV job name list.
+        state:       CSV state list (e.g. "COMPLETED,FAILED").
+        partition:   CSV partition name list.
+        account:     CSV account list.
+        cluster:     CSV cluster list.
+        nodes:       Ranged node string (e.g. "gpu[01-04]").
+        start_time:  Include jobs that started at or after this UNIX timestamp.
+        end_time:    Include jobs that ended at or before this UNIX timestamp.
+        qos:         CSV QOS name list.
+        reservation: CSV reservation name list.
+        skip_steps:  If True, omit per-step detail from each job record.
+        show_batch_script:   If True, include the job's batch script.
+        show_job_environment: If True, include the job's environment variables.
+        limit:       Maximum number of jobs to return (default 20, max 500).
+        fields:      Field names to include per job. Omit for default summary.
+
+    Examples:
+        # All FAILED jobs for user alice in the last week
+        slurmdb_list_jobs(users="alice", state="FAILED", start_time=1700000000)
+
+        # Completed GPU jobs on a specific partition
+        slurmdb_list_jobs(state="COMPLETED", partition="gpu", limit=50)
+    """
+)
+async def slurmdb_list_jobs(
+    users: Optional[str] = None,
+    job_name: Optional[str] = None,
+    state: Optional[str] = None,
+    partition: Optional[str] = None,
+    account: Optional[str] = None,
+    cluster: Optional[str] = None,
+    nodes: Optional[str] = None,
+    start_time: Optional[int] = None,
+    end_time: Optional[int] = None,
+    qos: Optional[str] = None,
+    reservation: Optional[str] = None,
+    skip_steps: bool = True,
+    show_batch_script: bool = False,
+    show_job_environment: bool = False,
+    limit: int = 20,
+    fields: Optional[list[str]] = None,
+) -> list[dict]:
+    """Query SlurmDB for historical job accounting records."""
+    try:
+        _, slurm = get_slurm_client()
+
+        params: dict = {}
+        if users:
+            params["users"] = users
+        if job_name:
+            params["job_name"] = job_name
+        if state:
+            params["state"] = state
+        if partition:
+            params["partition"] = partition
+        if account:
+            params["account"] = account
+        if cluster:
+            params["cluster"] = cluster
+        if nodes:
+            params["node"] = nodes
+        if start_time:
+            params["start_time"] = start_time
+        if end_time:
+            params["end_time"] = end_time
+        if qos:
+            params["qos"] = qos
+        if reservation:
+            params["reservation"] = reservation
+        if skip_steps:
+            params["skip_steps"] = "true"
+        if show_batch_script:
+            params["show_batch_script"] = "true"
+        if show_job_environment:
+            params["show_job_environment"] = "true"
+
+        data = await slurm.get_db("jobs", params=params)
+        jobs: list[dict] = data.get("jobs", [])
+
+        jobs = jobs[: max(1, min(limit, 500))]
+        return [normalise_db_job(j, fields) for j in jobs]
+
+    except Exception as e:
+        raise ToolError(f"Failed to query SlurmDB jobs: {e!r}") from e
+
+
+@mcp.tool(
+    description="""
+    Get detailed information for a specific job from SlurmDB by its ID.
+
+    Unlike slurm_get_job — which queries the live scheduler and only sees jobs
+    currently in the queue — this tool queries the Slurm accounting database
+    (slurmdbd) and returns full details for any job including completed, failed,
+    and cancelled jobs.
+
+    Returns the full job record by default, including: job_id, name, user, group,
+    account, state, partition, nodes, node_count, cpus, submit, start, end,
+    elapsed, time_limit, exit_code, work_dir, tres_req_str, tres_alloc_str,
+    qos, priority, reservation, cluster, comment, constraints, submit_line,
+    script, environment, and more.
+
+    Args:
+        job_id: The integer Slurm job ID.
+        fields: Optional list of field names to return.
+                Omit to get the full detail set.
+
+    Examples:
+        # Get full details for job 12345
+        slurmdb_get_job(12345)
+
+        # Get just the submit line and script
+        slurmdb_get_job(12345, fields=["job_id", "name", "submit_line", "script"])
+    """
+)
+async def slurmdb_get_job(
+    job_id: int,
+    fields: Optional[list[str]] = None,
+) -> dict:
+    """Get full accounting details for a specific job from SlurmDB."""
+    try:
+        _, slurm = get_slurm_client()
+        data = await slurm.get_db(f"job/{job_id}")
+        jobs: list[dict] = data.get("jobs", [])
+        if not jobs:
+            raise ToolError(f"Job {job_id} not found in SlurmDB.")
+        # Pass [] to normalise_db_job so project() returns all fields
+        return normalise_db_job(jobs[0], fields if fields is not None else [])
+    except ToolError:
+        raise
+    except Exception as e:
+        raise ToolError(f"Failed to get SlurmDB job {job_id}: {e!r}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +384,7 @@ async def slurm_list_nodes(
         return [normalise_node(n, fields) for n in nodes]
 
     except Exception as e:
-        raise ToolError(f"Failed to list nodes: {e}") from e
+        raise ToolError(f"Failed to list nodes: {e!r}") from e
 
 
 @mcp.tool(
@@ -259,7 +417,7 @@ async def slurm_get_node(
     except ToolError:
         raise
     except Exception as e:
-        raise ToolError(f"Failed to get node '{node_name}': {e}") from e
+        raise ToolError(f"Failed to get node '{node_name}': {e!r}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +474,7 @@ async def slurm_list_partitions(
         return [normalise_partition(p, fields) for p in partitions]
 
     except Exception as e:
-        raise ToolError(f"Failed to list partitions: {e}") from e
+        raise ToolError(f"Failed to list partitions: {e!r}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +512,7 @@ async def slurm_list_reservations(
         reservations: list[dict] = data.get("reservations", [])
         return [normalise_reservation(r, fields) for r in reservations]
     except Exception as e:
-        raise ToolError(f"Failed to list reservations: {e}") from e
+        raise ToolError(f"Failed to list reservations: {e!r}") from e
 
 
 # ---------------------------------------------------------------------------
